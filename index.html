@@ -45,6 +45,14 @@
   .del-btn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:7px;width:30px;height:32px;cursor:pointer;font-size:15px;line-height:1}
   .del-btn:hover{border-color:var(--bad);color:var(--bad)}
   .wall-dot{width:14px;height:14px;border-radius:4px;display:inline-block;vertical-align:middle;flex:none}
+  /* lista odcinków (karty) */
+  .piece-row{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 9px;margin-bottom:8px;display:flex;flex-direction:column;gap:7px}
+  .piece-row .r-main{display:grid;grid-template-columns:20px 1fr 78px 54px 32px;gap:7px;align-items:center}
+  .piece-row .r-num{color:var(--muted);font-size:12px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+  .piece-row .wallcell{display:flex;align-items:center;gap:6px;min-width:0}
+  .piece-row .wallcell input{min-width:0}
+  .piece-row input{padding:7px 8px}
+  .piece-row .note{width:100%;font-size:13px}
   button.primary{background:var(--accent);color:#06101f;border:none;border-radius:9px;padding:12px 16px;font-size:14.5px;font-weight:700;cursor:pointer;width:100%}
   button.primary:hover{filter:brightness(1.08)}
   button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:13px;cursor:pointer}
@@ -68,9 +76,12 @@
   .seg{height:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#06101f;font-weight:700;overflow:hidden;white-space:nowrap;border-right:1px solid rgba(0,0,0,.25)}
   .seg.kerf{background:repeating-linear-gradient(45deg,#0000,#0000 2px,rgba(0,0,0,.3) 2px,rgba(0,0,0,.3) 4px);min-width:2px}
   .seg.waste{background:transparent;color:var(--muted);font-weight:600}
+  .seg .skos{position:absolute;top:1px;right:2px;font-size:9px;opacity:.85}
   .legend{display:flex;flex-wrap:wrap;gap:12px;margin:6px 0 20px;font-size:12.5px;color:var(--muted)}
   .legend .item{display:flex;align-items:center;gap:6px}
-  .cutlist{font-size:12.5px;color:var(--muted);margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .cutlist{font-size:12.5px;color:var(--muted);margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.7}
+  .cl-wall{color:var(--muted)}
+  .cut-note{color:var(--warn);font-weight:700;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   .empty{color:var(--muted);text-align:center;padding:50px 10px;font-size:14px}
   .box{margin-top:14px;padding:12px 14px;background:var(--panel2);border-radius:10px;border:1px solid var(--line);font-size:13px}
   .box b{color:var(--text)}
@@ -100,6 +111,8 @@
     .stat,.box,.beam-head .meta,.legend{color:#000}
     .stat{background:#f2f2f2;border:1px solid #ccc}
     .cutlist{color:#111}
+    .cl-wall{color:#444}
+    .cut-note{color:#000;text-decoration:underline}
     table.summary th,table.summary td{border-bottom:1px solid #bbb}
     .qty-badge{background:#000!important;color:#fff!important}
   }
@@ -147,18 +160,9 @@
 
       <hr class="sep">
       <h2>2 · Potrzebne odcinki</h2>
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th style="width:36%">Ściana / element</th>
-            <th style="width:26%">Długość (mm)</th>
-            <th style="width:26%">Ilość</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="piecesBody"></tbody>
-      </table>
+      <div id="piecesBody"></div>
       <button class="add-link" id="addRow">+ dodaj odcinek</button>
+      <div class="hint">W polu „Opis / uwagi" możesz dopisać np. „cięcie pod skosem 45°" — pojawi się na liście cięć i na wydruku dla operatora.</div>
 
       <button class="primary" id="calcBtn" style="margin-top:18px">⚙️ Optymalizuj cięcie</button>
       <div class="btn-row">
@@ -201,17 +205,18 @@ function colorForWall(name, map){
 const $ = id => document.getElementById(id);
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function fmt(n){ return Math.round(n).toLocaleString('pl-PL'); }
+const SEP='\u0001';
 
 /* ---------- STAN ---------- */
 let stock = [{name:'Belka pełna', len:4500, qty:''}]; // qty '' = bez limitu
 let rows  = [
-  {wall:'Ściana A', len:1250, qty:2},
-  {wall:'Ściana A', len:550,  qty:2},
-  {wall:'Ściana A', len:1140, qty:4},
+  {wall:'Ściana A', len:1250, qty:2, note:''},
+  {wall:'Ściana A', len:550,  qty:2, note:''},
+  {wall:'Ściana A', len:1140, qty:4, note:'skos 45° z jednej strony'},
 ];
 const SAMPLE = JSON.parse(JSON.stringify(rows));
 
-/* ---------- render tabel wejścia ---------- */
+/* ---------- render materiału ---------- */
 function renderStock(){
   const tb=$('stockBody'); tb.innerHTML='';
   stock.forEach((s,i)=>{
@@ -230,27 +235,41 @@ function renderStock(){
     if(stock.length>1){stock.splice(+e.target.dataset.dels,1);renderStock();}
   }));
 }
-function renderRows(){
-  const tb=$('piecesBody'); tb.innerHTML='';
-  const colorMap={};
-  rows.forEach((r,i)=>{
-    const dot = r.wall ? colorForWall(r.wall,colorMap) : '#39445a';
-    const tr=document.createElement('tr');
-    tr.innerHTML=`
-      <td><div style="display:flex;align-items:center;gap:6px">
-        <span class="wall-dot" style="background:${dot}"></span>
-        <input type="text" data-i="${i}" data-k="wall" value="${escapeHtml(r.wall)}" placeholder="np. A" style="flex:1">
-      </div></td>
-      <td><input type="number" data-i="${i}" data-k="len" value="${r.len}" min="1" placeholder="mm"></td>
-      <td><input type="number" data-i="${i}" data-k="qty" value="${r.qty}" min="1" placeholder="szt"></td>
-      <td><button class="del-btn" data-del="${i}">×</button></td>`;
-    tb.appendChild(tr);
+
+/* ---------- render odcinków (bez przebudowy przy pisaniu) ---------- */
+function refreshDots(){
+  const cm={};
+  document.querySelectorAll('#piecesBody .piece-row').forEach((row,i)=>{
+    const w = rows[i] ? (rows[i].wall||'') : '';
+    const dot=row.querySelector('.wall-dot');
+    if(dot) dot.style.background = w ? colorForWall(w,cm) : '#39445a';
   });
-  tb.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
+}
+function renderRows(){
+  const c=$('piecesBody'); c.innerHTML='';
+  const cm={};
+  rows.forEach((r,i)=>{
+    const dot = r.wall ? colorForWall(r.wall,cm) : '#39445a';
+    const div=document.createElement('div'); div.className='piece-row';
+    div.innerHTML=`
+      <div class="r-main">
+        <span class="r-num">${i+1}</span>
+        <div class="wallcell">
+          <span class="wall-dot" style="background:${dot}"></span>
+          <input type="text" data-i="${i}" data-k="wall" value="${escapeHtml(r.wall||'')}" placeholder="Ściana / element">
+        </div>
+        <input type="number" data-i="${i}" data-k="len" value="${r.len??''}" min="1" placeholder="Dł. mm">
+        <input type="number" data-i="${i}" data-k="qty" value="${r.qty??''}" min="1" placeholder="Szt.">
+        <button class="del-btn" data-del="${i}">×</button>
+      </div>
+      <input type="text" class="note" data-i="${i}" data-k="note" value="${escapeHtml(r.note||'')}" placeholder="Opis / uwagi — np. cięcie pod skosem 45°">`;
+    c.appendChild(div);
+  });
+  c.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',e=>{
     const i=+e.target.dataset.i,k=e.target.dataset.k; rows[i][k]=e.target.value;
-    if(k==='wall') renderRows();
+    if(k==='wall') refreshDots();
   }));
-  tb.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
+  c.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',e=>{
     rows.splice(+e.target.dataset.del,1); renderRows();
   }));
 }
@@ -258,39 +277,32 @@ function renderRows(){
 /* ---------- ALGORYTM: wiele długości + limity + rzaz ---------- */
 function optimize(pieces, stockTypes, kerf){
   const items = pieces.slice().sort((a,b)=>b.len-a.len);
-  // typy z licznikiem zużycia; Infinity gdy bez limitu
-  const types = stockTypes.map(t=>({...t, qty: (t.qty===Infinity? Infinity:t.qty), used:0}));
+  const types = stockTypes.map(t=>({...t, qty:(t.qty===Infinity?Infinity:t.qty), used:0}));
   const bins=[]; const shortage=[];
   for(const it of items){
     const cost = it.len + kerf;
-    // 1) Best-fit do otwartych belek
     let best=-1,bestRem=Infinity;
     for(let b=0;b<bins.length;b++){
       const rem=bins[b].len-bins[b].used;
       if(cost<=rem+1e-9 && rem<bestRem){best=b;bestRem=rem;}
     }
-    if(best>=0){ bins[best].segments.push({wall:it.wall,len:it.len}); bins[best].used+=cost; continue; }
-    // 2) Otwórz nową belkę: najkrótsza dostępna, która mieści (zużywa resztki najpierw)
-    let cand=-1;
-    let candKey=null;
+    if(best>=0){ bins[best].segments.push({wall:it.wall,len:it.len,note:it.note}); bins[best].used+=cost; continue; }
+    let cand=-1, candKey=null;
     for(let t=0;t<types.length;t++){
       if(types[t].used>=types[t].qty) continue;
       if(types[t].len < cost) continue;
-      // klucz: (długość rosnąco, limitowane przed nieograniczonymi)
       const key=[types[t].len, (types[t].qty===Infinity?1:0)];
-      if(cand===-1 || key[0]<candKey[0] || (key[0]===candKey[0] && key[1]<candKey[1])){
-        cand=t; candKey=key;
-      }
+      if(cand===-1 || key[0]<candKey[0] || (key[0]===candKey[0] && key[1]<candKey[1])){ cand=t; candKey=key; }
     }
     if(cand===-1){ shortage.push(it); continue; }
     types[cand].used++;
-    bins.push({typeIdx:cand, name:types[cand].name, len:types[cand].len, segments:[{wall:it.wall,len:it.len}], used:cost});
+    bins.push({typeIdx:cand, name:types[cand].name, len:types[cand].len, segments:[{wall:it.wall,len:it.len,note:it.note}], used:cost});
   }
   return {bins, shortage, types};
 }
 
 /* ---------- GŁÓWNE LICZENIE ---------- */
-function parseStock(kerf){
+function parseStock(){
   const out=[];
   for(const s of stock){
     const len=+s.len; if(!len||len<=0) continue;
@@ -305,16 +317,17 @@ function calculate(){
   const kerf=+$('kerf').value||0;
   const minOffcut=+$('minOffcut').value||0;
   const profileName=$('profileName').value||'Belka';
-  const stockTypes=parseStock(kerf);
+  const stockTypes=parseStock();
   const maxStockLen=stockTypes.reduce((m,t)=>Math.max(m,t.len),0);
 
-  // odcinki
   const pieces=[]; let tooLong=null;
   for(const r of rows){
-    const len=+r.len, qty=Math.round(+r.qty); const wall=(r.wall||'—').trim()||'—';
+    const len=+r.len, qty=Math.round(+r.qty);
+    const wall=(r.wall||'—').trim()||'—';
+    const note=(r.note||'').trim();
     if(!len||len<=0||!qty||qty<=0) continue;
     if(len+kerf>maxStockLen) tooLong=len;
-    for(let i=0;i<qty;i++) pieces.push({wall,len});
+    for(let i=0;i<qty;i++) pieces.push({wall,len,note});
   }
 
   const res=$('results');
@@ -324,12 +337,10 @@ function calculate(){
 
   const {bins, shortage} = optimize(pieces, stockTypes, kerf);
 
-  // kolory
   const colorMap={}; const wallsOrder=[];
   pieces.forEach(p=>{ if(!wallsOrder.includes(p.wall)) wallsOrder.push(p.wall); });
   wallsOrder.forEach(w=>colorForWall(w,colorMap));
 
-  // statystyki
   const nBeams=bins.length;
   const totalStock=bins.reduce((s,b)=>s+b.len,0);
   const cutPieces=pieces.length - shortage.length;
@@ -360,34 +371,37 @@ function calculate(){
     Materiał: <b style="color:var(--text)">${escapeHtml(profileName)}</b>, rzaz ${kerf} mm ·
     zużyty materiał na odcinki: ${fmt(placedLen)} mm, straty na rzazie: ${fmt(totalKerf)} mm.</div>`;
 
-  // legenda
   html+=`<div class="legend">`;
   wallsOrder.forEach(w=>{ html+=`<div class="item"><span class="wall-dot" style="background:${colorMap[w]}"></span>${escapeHtml(w)}</div>`; });
   html+=`<div class="item"><span class="wall-dot" style="background:var(--waste)"></span>odpad</div></div>`;
 
-  // --- grupowanie identycznych belek we wzory ---
+  // grupowanie identycznych belek (z uwzględnieniem opisu/skosu)
   const patternMap=new Map();
   bins.forEach(b=>{
-    const sig=b.len+'::'+b.segments.map(s=>s.len+'|'+s.wall).sort().join(',');
+    const sig=b.len+'::'+b.segments.map(s=>s.len+SEP+s.wall+SEP+(s.note||'')).sort().join(',');
     if(!patternMap.has(sig)) patternMap.set(sig,{...b, count:0, sample:b});
     patternMap.get(sig).count++;
   });
   const patterns=[...patternMap.values()].sort((a,b)=> b.len-a.len || b.count-a.count);
 
-  patterns.forEach((p,idx)=>{
+  patterns.forEach(p=>{
     const b=p.sample; const rem=b.len-b.used;
     let inner='';
     b.segments.forEach(s=>{
       const wPct=s.len/b.len*100;
-      inner+=`<div class="seg" style="width:${wPct}%;background:${colorMap[s.wall]}" title="${escapeHtml(s.wall)}: ${s.len} mm">${wPct>7?s.len:''}</div>`;
+      const tip=`${s.wall}: ${s.len} mm${s.note?' — '+s.note:''}`;
+      inner+=`<div class="seg" style="width:${wPct}%;background:${colorMap[s.wall]}" title="${escapeHtml(tip)}">${wPct>7?s.len:''}${s.note?'<span class="skos">◿</span>':''}</div>`;
       if(kerf>0) inner+=`<div class="seg kerf" style="width:${kerf/b.len*100}%"></div>`;
     });
     const wastePct=rem/b.len*100;
     inner+=`<div class="seg waste" style="width:${wastePct}%">${wastePct>7?Math.round(rem)+' mm':''}</div>`;
 
     const counts={};
-    b.segments.forEach(s=>{const k=s.len+'|'+s.wall;counts[k]=(counts[k]||0)+1;});
-    const parts=Object.entries(counts).sort((a,c)=>c[1]-a[1]).map(([k,c])=>{const [len,wall]=k.split('|');return `${c}×${len} (${wall})`;});
+    b.segments.forEach(s=>{const k=s.len+SEP+s.wall+SEP+(s.note||'');counts[k]=(counts[k]||0)+1;});
+    const parts=Object.entries(counts).sort((a,c)=>c[1]-a[1]).map(([k,c])=>{
+      const [len,wall,note]=k.split(SEP);
+      return `${c}×${len} <span class="cl-wall">(${escapeHtml(wall)})</span>${note?` <span class="cut-note">◿ ${escapeHtml(note)}</span>`:''}`;
+    });
     const usable = rem>=minOffcut && rem>0;
 
     html+=`<div class="beam">
@@ -400,29 +414,29 @@ function calculate(){
     </div>`;
   });
 
-  // --- zestawienie po ścianach ---
+  // zestawienie po ścianach
   const wallAgg={};
-  pieces.forEach(p=>{ if(!wallAgg[p.wall]) wallAgg[p.wall]={count:0,len:0,items:{}}; wallAgg[p.wall].count++; wallAgg[p.wall].len+=p.len; wallAgg[p.wall].items[p.len]=(wallAgg[p.wall].items[p.len]||0)+1; });
+  pieces.forEach(p=>{ if(!wallAgg[p.wall]) wallAgg[p.wall]={count:0,len:0,items:{}}; wallAgg[p.wall].count++; wallAgg[p.wall].len+=p.len; const key=p.len+(p.note?(' '+p.note):''); wallAgg[p.wall].items[key]=(wallAgg[p.wall].items[key]||0)+1; });
   html+=`<div class="section-title">Zestawienie po ścianach / elementach</div>`;
   html+=`<table class="summary"><thead><tr><th>Ściana / element</th><th>Odcinki</th><th class="num">Szt.</th><th class="num">Materiał (mm)</th></tr></thead><tbody>`;
   wallsOrder.forEach(w=>{
     const a=wallAgg[w];
-    const itemsTxt=Object.entries(a.items).sort((x,y)=>y[0]-x[0]).map(([l,c])=>`${c}×${l}`).join(', ');
+    const itemsTxt=Object.entries(a.items).sort((x,y)=>parseInt(y[0])-parseInt(x[0])).map(([l,c])=>`${c}×${escapeHtml(l)}`).join(', ');
     html+=`<tr><td><span class="wall-dot" style="background:${colorMap[w]}"></span> ${escapeHtml(w)}</td><td style="color:var(--muted)">${itemsTxt}</td><td class="num">${a.count}</td><td class="num">${fmt(a.len)}</td></tr>`;
   });
   html+=`<tr style="font-weight:700"><td>RAZEM</td><td></td><td class="num">${pieces.length}</td><td class="num">${fmt(placedLen + shortage.reduce((s,x)=>s+x.len,0))}</td></tr>`;
   html+=`</tbody></table>`;
 
-  // --- zużycie materiału (ile których belek) ---
+  // zużycie materiału
   const useByType={};
   bins.forEach(b=>{const k=b.name+' '+b.len; useByType[k]=(useByType[k]||0)+1;});
   html+=`<div class="section-title">Zużycie materiału</div><div class="box">`;
   html+=Object.entries(useByType).map(([k,c])=>`<b>${c}×</b> ${escapeHtml(k)} mm`).join(' &nbsp;·&nbsp; ');
   html+=`</div>`;
 
-  // --- resztki użyteczne ---
+  // resztki użyteczne
   const offcuts=[];
-  bins.forEach((b,i)=>{const rem=b.len-b.used; if(rem>=minOffcut&&rem>0) offcuts.push(Math.round(rem));});
+  bins.forEach(b=>{const rem=b.len-b.used; if(rem>=minOffcut&&rem>0) offcuts.push(Math.round(rem));});
   if(offcuts.length){
     offcuts.sort((a,b)=>b-a);
     const og={}; offcuts.forEach(o=>og[o]=(og[o]||0)+1);
@@ -439,7 +453,6 @@ function calculate(){
 async function exportData(){
   const data={profileName:$('profileName').value,kerf:$('kerf').value,minOffcut:$('minOffcut').value,stock,rows};
   const json=JSON.stringify(data,null,2);
-  // Wersja opublikowana (strona): zapis przez uprawnienie downloads
   if(window.claude && window.claude.use){
     try{
       const dl=await window.claude.use('downloads');
@@ -448,7 +461,6 @@ async function exportData(){
     }catch(e){ if(!(e&&e.code==='declined')) alert('Nie udało się zapisać: '+((e&&e.message)||e)); }
     return;
   }
-  // Plik otwierany lokalnie: klasyczne pobranie
   const blob=new Blob([json],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='optycinacz-projekt.json';a.click();
 }
@@ -459,6 +471,7 @@ function importData(file){
     $('profileName').value=d.profileName||''; $('kerf').value=d.kerf??3; $('minOffcut').value=d.minOffcut??300;
     if(Array.isArray(d.stock)&&d.stock.length) stock=d.stock;
     rows=Array.isArray(d.rows)?d.rows:[];
+    rows.forEach(r=>{ if(r.note===undefined) r.note=''; });
     renderStock(); renderRows(); calculate();
   }catch(err){alert('Nie udało się wczytać pliku.');}};
   rd.readAsText(file);
@@ -466,14 +479,14 @@ function importData(file){
 
 /* ---------- init ---------- */
 $('addStock').addEventListener('click',()=>{stock.push({name:'Resztka',len:'',qty:''});renderStock();});
-$('addRow').addEventListener('click',()=>{rows.push({wall:'',len:'',qty:''});renderRows();});
+$('addRow').addEventListener('click',()=>{rows.push({wall:'',len:'',qty:'',note:''});renderRows();});
 $('calcBtn').addEventListener('click',calculate);
 $('printBtn').addEventListener('click',()=>window.print());
 $('exportBtn').addEventListener('click',exportData);
 $('importBtn').addEventListener('click',()=>$('importFile').click());
 $('importFile').addEventListener('change',e=>{if(e.target.files[0])importData(e.target.files[0]);});
 $('sampleBtn').addEventListener('click',()=>{rows=JSON.parse(JSON.stringify(SAMPLE));renderRows();calculate();});
-$('clearBtn').addEventListener('click',()=>{rows=[{wall:'',len:'',qty:''}];renderRows();$('results').innerHTML='<div class="empty">Dodaj odcinki i kliknij „Optymalizuj cięcie”.</div>';});
+$('clearBtn').addEventListener('click',()=>{rows=[{wall:'',len:'',qty:'',note:''}];renderRows();$('results').innerHTML='<div class="empty">Dodaj odcinki i kliknij „Optymalizuj cięcie”.</div>';});
 
 renderStock(); renderRows(); calculate();
 </script>
