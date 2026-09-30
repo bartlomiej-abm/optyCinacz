@@ -427,6 +427,18 @@ function calculate(){
   html+=`<tr style="font-weight:700"><td>RAZEM</td><td></td><td class="num">${pieces.length}</td><td class="num">${fmt(placedLen + shortage.reduce((s,x)=>s+x.len,0))}</td></tr>`;
   html+=`</tbody></table>`;
 
+  // zestawienie sztuk wg wymiaru (ile łącznie kawałków danej długości)
+  const dimAgg={};
+  pieces.forEach(p=>{ const k=p.len+SEP+(p.note||''); if(!dimAgg[k]) dimAgg[k]={len:p.len,note:p.note||'',count:0}; dimAgg[k].count++; });
+  const dims=Object.values(dimAgg).sort((a,b)=>b.len-a.len);
+  html+=`<div class="section-title">Zestawienie sztuk wg wymiaru</div>`;
+  html+=`<table class="summary"><thead><tr><th class="num">Wymiar (mm)</th><th>Opis / uwagi</th><th class="num">Sztuk</th><th class="num">Razem (mm)</th></tr></thead><tbody>`;
+  dims.forEach(d=>{
+    html+=`<tr><td class="num">${fmt(d.len)}</td><td style="color:var(--muted)">${d.note?('<span class="cut-note">◿ '+escapeHtml(d.note)+'</span>'):'—'}</td><td class="num">${d.count}</td><td class="num">${fmt(d.len*d.count)}</td></tr>`;
+  });
+  html+=`<tr style="font-weight:700"><td class="num"></td><td>RAZEM</td><td class="num">${pieces.length}</td><td class="num">${fmt(pieces.reduce((s,p)=>s+p.len,0))}</td></tr>`;
+  html+=`</tbody></table>`;
+
   // zużycie materiału
   const useByType={};
   bins.forEach(b=>{const k=b.name+' '+b.len; useByType[k]=(useByType[k]||0)+1;});
